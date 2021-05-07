@@ -144,11 +144,11 @@ const (
 	// pod deletion order.
 	// The implicit deletion cost for pods that don't set the annotation is 0, negative values are permitted.
 	//
-	// This annotation is alpha-level and is only honored when PodDeletionCost feature is enabled.
+	// This annotation is beta-level and is only honored when PodDeletionCost feature is enabled.
 	PodDeletionCost = "controller.kubernetes.io/pod-deletion-cost"
 
 	// AnnotationTopologyAwareHints can be used to enable or disable Topology
-	// Aware Hints for a Service. This may be set to "auto" or "disabled". Any
-	// other value is treated as "disabled".
+	// Aware Hints for a Service. This may be set to "Auto" or "Disabled". Any
+	// other value is treated as "Disabled".
 	AnnotationTopologyAwareHints = "service.kubernetes.io/topology-aware-hints"
 )
