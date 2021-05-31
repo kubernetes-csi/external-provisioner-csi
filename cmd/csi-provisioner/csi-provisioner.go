@@ -50,6 +50,7 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"               // register work queues in the default legacy registry
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
@@ -462,7 +463,9 @@ func main() {
 			}),
 		)
 
+		logger := klogr.New().WithName("CapacityController")
 		capacityController = capacity.NewCentralCapacityController(
+			logger,
 			csi.NewControllerClient(grpcClient),
 			provisionerName,
 			clientset,

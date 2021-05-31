@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/go-logr/logr"
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	"google.golang.org/grpc"
 	v1 "k8s.io/api/core/v1"
@@ -79,6 +80,7 @@ const (
 type Controller struct {
 	metrics.BaseStableCollector
 
+	logger           logr.Logger
 	csiController    CSICapacityClient
 	driverName       string
 	client           kubernetes.Interface
@@ -152,6 +154,7 @@ type CSICapacityClient interface {
 // It implements metrics.StableCollector and thus can be registered in
 // a registry.
 func NewCentralCapacityController(
+	logger logr.Logger,
 	csiController CSICapacityClient,
 	driverName string,
 	client kubernetes.Interface,
@@ -166,6 +169,7 @@ func NewCentralCapacityController(
 	immediateBinding bool,
 ) *Controller {
 	c := &Controller{
+		logger:           logger,
 		csiController:    csiController,
 		driverName:       driverName,
 		client:           client,
@@ -187,7 +191,7 @@ func NewCentralCapacityController(
 		AddFunc: func(obj interface{}) {
 			sc, ok := obj.(*storagev1.StorageClass)
 			if !ok {
-				klog.Errorf("added object: expected StorageClass, got %T -> ignoring it", obj)
+				logger.Error(fmt.Errorf("expected StorageClass, got %T -> ignoring it", obj), "added object")
 				return
 			}
 			c.onSCAddOrUpdate(sc)
@@ -195,7 +199,7 @@ func NewCentralCapacityController(
 		UpdateFunc: func(_ interface{}, newObj interface{}) {
 			sc, ok := newObj.(*storagev1.StorageClass)
 			if !ok {
-				klog.Errorf("updated object: expected StorageClass, got %T -> ignoring it", newObj)
+				logger.Error(fmt.Errorf("expected StorageClass, got %T -> ignoring it", newObj), "updated object")
 				return
 			}
 			c.onSCAddOrUpdate(sc)
@@ -207,7 +211,7 @@ func NewCentralCapacityController(
 			}
 			sc, ok := obj.(*storagev1.StorageClass)
 			if !ok {
-				klog.Errorf("deleted object: expected StorageClass, got %T -> ignoring it", obj)
+				logger.Error(fmt.Errorf("expected StorageClass, got %T -> ignoring it", obj), "deleted object")
 				return
 			}
 			c.onSCDelete(sc)
@@ -228,24 +232,28 @@ var _ metrics.StableCollector = &Controller{}
 
 // Run is a main Controller handler
 func (c *Controller) Run(ctx context.Context, threadiness int) {
-	klog.Info("Starting Capacity Controller")
+	logger := c.logger
+
+	logger.Info("starting controller")
 	defer c.queue.ShutDown()
 
-	c.prepare(ctx)
+	c.prepare(ctx, logger)
 	for i := 0; i < threadiness; i++ {
 		go wait.UntilWithContext(ctx, func(ctx context.Context) {
-			c.runWorker(ctx)
+			c.runWorker(ctx, logger)
 		}, time.Second)
 	}
 
-	go wait.UntilWithContext(ctx, func(ctx context.Context) { c.pollCapacities() }, c.pollPeriod)
+	go wait.UntilWithContext(ctx, func(ctx context.Context) { c.pollCapacities(logger) }, c.pollPeriod)
 
-	klog.Info("Started Capacity Controller")
+	logger.Info("started controller")
 	<-ctx.Done()
-	klog.Info("Shutting down Capacity Controller")
+	logger.Info("shutting down controller")
 }
 
-func (c *Controller) prepare(ctx context.Context) {
+func (c *Controller) prepare(ctx context.Context, logger logr.Logger) {
+	logger = logger.WithName("prepare")
+
 	// Wait for topology and storage class informer sync. Once we have that,
 	// we know which CSIStorageCapacity objects we need.
 	if !cache.WaitForCacheSync(ctx.Done(), c.topologyInformer.HasSynced, c.scInformer.Informer().HasSynced, c.cInformer.Informer().HasSynced) {
@@ -258,16 +266,18 @@ func (c *Controller) prepare(ctx context.Context) {
 	// topology segments, onTopologyChanges lists the classes.
 	c.onTopologyChanges(c.topologyInformer.List(), nil)
 
-	if klog.V(3).Enabled() {
+	logger3 := logger.V(3)
+	if logger3.Enabled() {
 		scs, err := c.scInformer.Lister().List(labels.Everything())
 		if err != nil {
 			// Shouldn't happen.
 			utilruntime.HandleError(err)
 		}
-		klog.V(3).Infof("Initial number of topology segments %d, storage classes %d, potential CSIStorageCapacity objects %d",
-			len(c.topologyInformer.List()),
-			len(scs),
-			len(c.capacities))
+		logger3.Info("initial state",
+			"topology segments", len(c.topologyInformer.List()),
+			"storage classes", len(scs),
+			"potential CSIStorageCapacity objects", len(c.capacities),
+		)
 	}
 
 	// Now that we know what we need, we can check what we have.
@@ -275,12 +285,12 @@ func (c *Controller) prepare(ctx context.Context) {
 	// objects: callbacks handle future updates and iterating
 	// avoids the assumumption that the callback will be invoked
 	// for all objects immediately when adding it.
-	klog.V(3).Info("Checking for existing CSIStorageCapacity objects")
+	logger3.Info("checking for existing CSIStorageCapacity objects")
 	handler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			csc, ok := obj.(*storagev1beta1.CSIStorageCapacity)
 			if !ok {
-				klog.Errorf("added object: expected CSIStorageCapacity, got %T -> ignoring it", obj)
+				logger.Error(fmt.Errorf("expected CSIStorageCapacity, got %T -> ignoring it", obj), "added object")
 				return
 			}
 			c.onCAddOrUpdate(ctx, csc)
@@ -288,7 +298,7 @@ func (c *Controller) prepare(ctx context.Context) {
 		UpdateFunc: func(_ interface{}, newObj interface{}) {
 			csc, ok := newObj.(*storagev1beta1.CSIStorageCapacity)
 			if !ok {
-				klog.Errorf("updated object: expected CSIStorageCapacity, got %T -> ignoring it", newObj)
+				logger.Error(fmt.Errorf("expected CSIStorageCapacity, got %T -> ignoring it", newObj), "updated object")
 				return
 			}
 			c.onCAddOrUpdate(ctx, csc)
@@ -300,7 +310,7 @@ func (c *Controller) prepare(ctx context.Context) {
 			}
 			csc, ok := obj.(*storagev1beta1.CSIStorageCapacity)
 			if !ok {
-				klog.Errorf("deleted object: expected CSIStorageCapacity, got %T -> ignoring it", obj)
+				logger.Error(fmt.Errorf("expected CSIStorageCapacity, got %T -> ignoring it", obj), "deleted object")
 				return
 			}
 			c.onCDelete(ctx, csc)
@@ -324,7 +334,8 @@ func (c *Controller) prepare(ctx context.Context) {
 
 // onTopologyChanges is called by the topology informer.
 func (c *Controller) onTopologyChanges(added []*topology.Segment, removed []*topology.Segment) {
-	klog.V(3).Infof("Capacity Controller: topology changed: added %v, removed %v", added, removed)
+	logger := c.logger.WithName("onTopologyChanges")
+	logger.V(3).Info("topology changed", "added", added, "removed", removed)
 
 	storageclasses, err := c.scInformer.Lister().List(labels.Everything())
 	if err != nil {
@@ -343,10 +354,10 @@ func (c *Controller) onTopologyChanges(added []*topology.Segment, removed []*top
 			continue
 		}
 		for _, segment := range added {
-			c.addWorkItem(segment, sc)
+			c.addWorkItem(logger, segment, sc)
 		}
 		for _, segment := range removed {
-			c.removeWorkItem(segment, sc)
+			c.removeWorkItem(logger, segment, sc)
 		}
 	}
 }
@@ -357,10 +368,11 @@ func (c *Controller) onSCAddOrUpdate(sc *storagev1.StorageClass) {
 	if sc.Provisioner != c.driverName {
 		return
 	}
+	logger := c.logger.WithName("onSCAddOrUpdate").WithValues("storageclass", klog.KObj(sc))
 
-	klog.V(3).Infof("Capacity Controller: storage class %s was updated or added", sc.Name)
+	logger.V(3).Info("updated or added")
 	if !c.immediateBinding && sc.VolumeBindingMode != nil && *sc.VolumeBindingMode == storagev1.VolumeBindingImmediate {
-		klog.V(3).Infof("Capacity Controller: ignoring storage class %s because it uses immediate binding", sc.Name)
+		logger.V(3).Info("ignoring storage class because it uses immediate binding")
 		return
 	}
 	segments := c.topologyInformer.List()
@@ -368,7 +380,7 @@ func (c *Controller) onSCAddOrUpdate(sc *storagev1.StorageClass) {
 	c.capacitiesLock.Lock()
 	defer c.capacitiesLock.Unlock()
 	for _, segment := range segments {
-		c.addWorkItem(segment, sc)
+		c.addWorkItem(logger, segment, sc)
 	}
 }
 
@@ -377,14 +389,15 @@ func (c *Controller) onSCDelete(sc *storagev1.StorageClass) {
 	if sc.Provisioner != c.driverName {
 		return
 	}
+	logger := c.logger.WithName("onSCDelete").WithValues("storageclass", klog.KObj(sc))
 
-	klog.V(3).Infof("Capacity Controller: storage class %s was removed", sc.Name)
+	logger.V(3).Info("removed")
 	segments := c.topologyInformer.List()
 
 	c.capacitiesLock.Lock()
 	defer c.capacitiesLock.Unlock()
 	for _, segment := range segments {
-		c.removeWorkItem(segment, sc)
+		c.removeWorkItem(logger, segment, sc)
 	}
 }
 
@@ -392,9 +405,9 @@ func (c *Controller) onSCDelete(sc *storagev1.StorageClass) {
 // a refresh. The node affinity is expected to come from controller.GenerateVolumeNodeAffinity,
 // i.e. only use NodeSelectorTerms and each of those must be based on the CSI driver's
 // topology key/value pairs of a topology segment.
-func (c *Controller) refreshTopology(nodeAffinity v1.VolumeNodeAffinity) {
+func (c *Controller) refreshTopology(logger logr.Logger, nodeAffinity v1.VolumeNodeAffinity) {
 	if nodeAffinity.Required == nil || nodeAffinity.Required.NodeSelectorTerms == nil {
-		klog.Errorf("Capacity Controller: skipping refresh: unexpected VolumeNodeAffinity, missing NodeSelectorTerms: %v", nodeAffinity)
+		logger.Error(fmt.Errorf("unexpected VolumeNodeAffinity, missing NodeSelectorTerms: %v", nodeAffinity), "skipping refresh")
 		return
 	}
 
@@ -404,12 +417,12 @@ func (c *Controller) refreshTopology(nodeAffinity v1.VolumeNodeAffinity) {
 	for _, term := range nodeAffinity.Required.NodeSelectorTerms {
 		segment, err := termToSegment(term)
 		if err != nil {
-			klog.Errorf("Capacity Controller: skipping refresh: unexpected node selector term %+v: %v", term, err)
+			logger.Error(fmt.Errorf("unexpected node selector term %+v: %v", term, err), "skipping refresh")
 			continue
 		}
 		for item := range c.capacities {
 			if item.segment.Compare(segment) == 0 {
-				klog.V(5).Infof("Capacity Controller: skipping refresh: enqueuing %+v because of the topology", item)
+				logger.V(5).Info("enqueuing because of the topology", "workitem", item)
 				c.queue.Add(item)
 			}
 		}
@@ -438,13 +451,13 @@ func termToSegment(term v1.NodeSelectorTerm) (segment topology.Segment, err erro
 
 // refreshSC identifies all work items matching the storage class and schedules
 // a refresh.
-func (c *Controller) refreshSC(storageClassName string) {
+func (c *Controller) refreshSC(logger logr.Logger, storageClassName string) {
 	c.capacitiesLock.Lock()
 	defer c.capacitiesLock.Unlock()
 
 	for item := range c.capacities {
 		if item.storageClassName == storageClassName {
-			klog.V(5).Infof("Capacity Controller: enqueuing %+v because of the storage class", item)
+			logger.V(5).Info("enqueuing because of the storage class", "workitem", item)
 			c.queue.Add(item)
 		}
 	}
@@ -452,7 +465,7 @@ func (c *Controller) refreshSC(storageClassName string) {
 
 // addWorkItem ensures that there is an item in c.capacities. It
 // must be called while holding c.capacitiesLock!
-func (c *Controller) addWorkItem(segment *topology.Segment, sc *storagev1.StorageClass) {
+func (c *Controller) addWorkItem(logger logr.Logger, segment *topology.Segment, sc *storagev1.StorageClass) {
 	item := workItem{
 		segment:          segment,
 		storageClassName: sc.Name,
@@ -465,13 +478,15 @@ func (c *Controller) addWorkItem(segment *topology.Segment, sc *storagev1.Storag
 
 	// ... and then tell our workers to update
 	// or create that capacity object.
-	klog.V(5).Infof("Capacity Controller: enqueuing %+v", item)
+	logger.V(5).Info("enqueuing", "workitem", item)
 	c.queue.Add(item)
 }
 
 // removeWorkItem ensures that the item gets removed from c.capacities. It
 // must be called while holding c.capacitiesLock!
-func (c *Controller) removeWorkItem(segment *topology.Segment, sc *storagev1.StorageClass) {
+func (c *Controller) removeWorkItem(logger logr.Logger, segment *topology.Segment, sc *storagev1.StorageClass) {
+	logger = logger.WithName("removeWorkItem")
+
 	item := workItem{
 		segment:          segment,
 		storageClassName: sc.Name,
@@ -479,7 +494,7 @@ func (c *Controller) removeWorkItem(segment *topology.Segment, sc *storagev1.Sto
 	capacity, found := c.capacities[item]
 	if !found {
 		// Already gone or in the queue to be removed.
-		klog.V(5).Infof("Capacity Controller: %+v already removed", item)
+		logger.V(5).Info("already removed", "workitem", item)
 		return
 	}
 	// Deleting the item will prevent further updates to
@@ -488,33 +503,35 @@ func (c *Controller) removeWorkItem(segment *topology.Segment, sc *storagev1.Sto
 
 	if capacity == nil {
 		// No object to remove.
-		klog.V(5).Infof("Capacity Controller: %+v removed, no object", item)
+		logger.V(5).Info("removed, no CSIStorageCapacity", "workitem", item)
 		return
 	}
 
 	// Any capacity object in the queue will be deleted.
-	klog.V(5).Infof("Capacity Controller: enqueuing CSIStorageCapacity %s for removal", capacity.Name)
+	logger.V(5).Info("enqueuing for removal", "CSIStorageCapacity", klog.KObj(capacity))
 	c.queue.Add(capacity)
 }
 
 // pollCapacities must be called periodically to detect when the underlying storage capacity has changed.
-func (c *Controller) pollCapacities() {
+func (c *Controller) pollCapacities(logger logr.Logger) {
+	logger = logger.WithName("pollCapacities")
+
 	c.capacitiesLock.Lock()
 	defer c.capacitiesLock.Unlock()
 
 	for item := range c.capacities {
-		klog.V(5).Infof("Capacity Controller: enqueuing %+v for periodic update", item)
+		logger.V(5).Info("enqueuing for periodic update", "workitem", item)
 		c.queue.Add(item)
 	}
 }
 
-func (c *Controller) runWorker(ctx context.Context) {
-	for c.processNextWorkItem(ctx) {
+func (c *Controller) runWorker(ctx context.Context, logger logr.Logger) {
+	for c.processNextWorkItem(ctx, logger) {
 	}
 }
 
 // processNextWorkItem processes items from queue.
-func (c *Controller) processNextWorkItem(ctx context.Context) bool {
+func (c *Controller) processNextWorkItem(ctx context.Context, logger logr.Logger) bool {
 	obj, shutdown := c.queue.Get()
 	if shutdown {
 		return false
@@ -525,19 +542,19 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 
 		switch obj := obj.(type) {
 		case workItem:
-			return c.syncCapacity(ctx, obj)
+			return c.syncCapacity(ctx, logger, obj)
 		case *storagev1beta1.CSIStorageCapacity:
-			return c.deleteCapacity(ctx, obj)
+			return c.deleteCapacity(ctx, logger, obj)
 		default:
-			klog.Warningf("unexpected work item %#v", obj)
+			logger.Info("unexpected work item type", "work item", obj)
 		}
 
 		return nil
 	}()
 
 	if err != nil {
-		utilruntime.HandleError(err)
-		klog.Warningf("Retrying %#v after %d failures", obj, c.queue.NumRequeues(obj))
+		utilruntime.HandleError(err) // TODO: remove?
+		logger.Info("retrying", "work item", obj, "num-failures", c.queue.NumRequeues(obj))
 		c.queue.AddRateLimited(obj)
 	} else {
 		c.queue.Forget(obj)
@@ -547,7 +564,7 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 }
 
 // syncCapacity gets the capacity and then updates or creates the object.
-func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
+func (c *Controller) syncCapacity(ctx context.Context, logger logr.Logger, item workItem) error {
 	// We lock only while accessing c.capacities, but not during
 	// the potentially long-running operations. That is okay
 	// because there is only a single worker per item. In the
@@ -559,11 +576,12 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 	capacity, found := c.capacities[item]
 	c.capacitiesLock.Unlock()
 
-	klog.V(5).Infof("Capacity Controller: refreshing %+v", item)
+	logger = logger.WithValues("workitem", item)
+	logger.V(5).Info("refreshing")
 	if !found {
 		// The item was removed in the meantime. This can happen when the storage class
 		// or the topology segment are gone.
-		klog.V(5).Infof("Capacity Controller: %v became obsolete", item)
+		logger.V(5).Info("became obsolete")
 		return nil
 	}
 
@@ -607,6 +625,7 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		maximumVolumeSize = resource.NewQuantity(resp.MaximumVolumeSize.Value, resource.BinarySI)
 	}
 
+	logger = logger.WithValues("quantity", quantity)
 	if capacity == nil {
 		// Create new object.
 		capacity = &storagev1beta1.CSIStorageCapacity{
@@ -626,19 +645,19 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 			capacity.OwnerReferences = []metav1.OwnerReference{*c.owner}
 		}
 		var err error
-		klog.V(5).Infof("Capacity Controller: creating new object for %+v, new capacity %v", item, quantity)
+		logger.V(5).Info("creating new object")
 		capacity, err = c.client.StorageV1beta1().CSIStorageCapacities(c.ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("create CSIStorageCapacity for %+v: %v", item, err)
 		}
-		klog.V(5).Infof("Capacity Controller: created %s with resource version %s for %+v with capacity %v", capacity.Name, capacity.ResourceVersion, item, quantity)
+		logger.V(5).Info("created object", "capacity", klog.KObj(capacity), "resourceVersion", capacity.ResourceVersion)
 		// We intentionally avoid storing the created object in c.capacities because that
 		// would race with receiving that object through the event handler. In the unlikely
 		// scenario that we end up creating two objects for the same work item, the second
 		// one will be recognized as duplicate and get deleted again once we receive it.
 	} else if capacity.Capacity.Value() == quantity.Value() &&
 		(c.owner == nil || c.isOwnedByUs(capacity)) {
-		klog.V(5).Infof("Capacity Controller: no need to update %s for %+v, same capacity %v and correct owner", capacity.Name, item, quantity)
+		logger.V(5).Info("no need to update, same capacity and correct owner", "capacity", klog.KObj(capacity))
 		return nil
 	} else {
 		// Update existing object. Must not modify object in the informer cache.
@@ -649,12 +668,12 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 			capacity.OwnerReferences = append(capacity.OwnerReferences, *c.owner)
 		}
 		var err error
-		klog.V(5).Infof("Capacity Controller: updating %s for %+v, new capacity %v", capacity.Name, item, quantity)
+		logger.V(5).Info("updating, new capacity", "capacity", klog.KObj(capacity))
 		capacity, err = c.client.StorageV1beta1().CSIStorageCapacities(capacity.Namespace).Update(ctx, capacity, metav1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("update CSIStorageCapacity for %+v: %v", item, err)
 		}
-		klog.V(5).Infof("Capacity Controller: updated %s with new resource version %s for %+v with capacity %v", capacity.Name, capacity.ResourceVersion, item, quantity)
+		logger.V(5).Info("updated", "capacity", klog.KObj(capacity), "resourceVersion", capacity.ResourceVersion)
 		// As for Create above, c.capacities intentionally doesn't get updated with the modified
 		// object to avoid races.
 	}
@@ -663,8 +682,8 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 }
 
 // deleteCapacity ensures that the object is gone when done.
-func (c *Controller) deleteCapacity(ctx context.Context, capacity *storagev1beta1.CSIStorageCapacity) error {
-	klog.V(5).Infof("Capacity Controller: removing CSIStorageCapacity %s", capacity.Name)
+func (c *Controller) deleteCapacity(ctx context.Context, logger logr.Logger, capacity *storagev1beta1.CSIStorageCapacity) error {
+	logger.V(5).Info("removing", "capacity", klog.KObj(capacity))
 	err := c.client.StorageV1beta1().CSIStorageCapacities(capacity.Namespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{})
 	if err != nil && apierrs.IsNotFound(err) {
 		return nil
@@ -677,6 +696,8 @@ func (c *Controller) deleteCapacity(ctx context.Context, capacity *storagev1beta
 // ensures that it gets deleted if no longer needed. Foreign objects
 // are ignored.
 func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1beta1.CSIStorageCapacity) {
+	logger := c.logger.WithName("onCAddOrUpdate").WithValues("capacity", klog.KObj(capacity), "resourceVersion", capacity.ResourceVersion)
+
 	if !c.isManaged(capacity) {
 		// Not ours (anymore?). For the unlikely case that someone removed our owner reference,
 		// we also must remove our reference to the object.
@@ -685,7 +706,7 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1beta
 		for item, capacity2 := range c.capacities {
 			if capacity2 != nil && capacity2.UID == capacity.UID {
 				c.capacities[item] = nil
-				klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s owner was modified by someone, enqueueing %v for re-creation", capacity.Name, item)
+				logger.V(5).Info("CSIStorageCapacity owner was modified by someone, enqueueing for re-creation", "workitem", item)
 				c.queue.Add(item)
 			}
 		}
@@ -697,7 +718,7 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1beta
 	for item, capacity2 := range c.capacities {
 		if capacity2 != nil && capacity2.UID == capacity.UID {
 			// We already have matched the object.
-			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s with resource version %s is already known to match %+v", capacity.Name, capacity.ResourceVersion, item)
+			logger.V(5).Info("CSIStorageCapacity already known to match", "workitem", item)
 			// Either way, remember the new object revision to avoid the "conflict" error
 			// when we try to update the old object.
 			c.capacities[item] = capacity
@@ -707,24 +728,26 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1beta
 			item.equals(capacity) {
 			// This is the capacity object for this particular combination
 			// of parameters. Reuse it.
-			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s with resource version %s matches %+v", capacity.Name, capacity.ResourceVersion, item)
+			logger.V(5).Info("found match", "workitem", item)
 			c.capacities[item] = capacity
 			return
 		}
 	}
 	// The CSIStorageCapacity object is obsolete, delete it.
-	klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s with resource version %s is obsolete, enqueue for removal", capacity.Name, capacity.ResourceVersion)
+	logger.V(5).Info("CSIStorageCapacity obsolete, enqueue for removal")
 	c.queue.Add(capacity)
 }
 
 func (c *Controller) onCDelete(ctx context.Context, capacity *storagev1beta1.CSIStorageCapacity) {
+	logger := c.logger.WithName("onCDelete").WithValues("capacity", klog.KObj(capacity), "resourceVersion", capacity.ResourceVersion)
+
 	c.capacitiesLock.Lock()
 	defer c.capacitiesLock.Unlock()
 	for item, capacity2 := range c.capacities {
 		if capacity2 != nil && capacity2.UID == capacity.UID {
 			// The object is still needed. Someone else must have removed it.
 			// Re-create it...
-			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s was removed by someone, enqueue %v for re-creation", capacity.Name, item)
+			logger.V(5).Info("CSIStorageCapacity removed by someone, enqueue for re-creation", "workitem", item)
 			c.capacities[item] = nil
 			c.queue.Add(item)
 			return
