@@ -258,6 +258,7 @@ type csiProvisioner struct {
 	extraCreateMetadata                   bool
 	eventRecorder                         record.EventRecorder
 	nodeDeployment                        *internalNodeDeployment
+	publishROXVol                         bool
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -336,6 +337,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	extraCreateMetadata bool,
 	defaultFSType string,
 	nodeDeployment *NodeDeployment,
+	publishROXVol bool,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -368,6 +370,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		vaLister:                              vaLister,
 		extraCreateMetadata:                   extraCreateMetadata,
 		eventRecorder:                         eventRecorder,
+		publishROXVol:                         publishROXVol,
 	}
 	if nodeDeployment != nil {
 		provisioner.nodeDeployment = &internalNodeDeployment{
@@ -799,9 +802,17 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 			return nil, controller.ProvisioningInBackground, sourceErr
 		}
 	}
+	pvReadOnly := false
+	volCaps := req.GetVolumeCapabilities()
+	// if the request only has one accessmode and if its ROX, set readonly to true
+	// TODO: check for the driver capability of MULTI_NODE_READER_ONLY capability from the CSI driver
+	if len(volCaps) == 1 && volCaps[0].GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY && p.publishROXVol {
+		pvReadOnly = true
+	}
 
 	result.csiPVSource.VolumeHandle = p.volumeIdToHandle(rep.Volume.VolumeId)
 	result.csiPVSource.VolumeAttributes = volumeAttributes
+	result.csiPVSource.ReadOnly = pvReadOnly
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,

@@ -103,6 +103,7 @@ var (
 	nodeDeploymentImmediateBinding = flag.Bool("node-deployment-immediate-binding", true, "Determines whether immediate binding is supported when deployed on each node.")
 	nodeDeploymentBaseDelay        = flag.Duration("node-deployment-base-delay", 20*time.Second, "Determines how long the external-provisioner sleeps initially before trying to own a PVC with immediate binding.")
 	nodeDeploymentMaxDelay         = flag.Duration("node-deployment-max-delay", 60*time.Second, "Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding.")
+	publishROXVol                  = flag.Bool("publish-rox-vol", false, "This option enables PV to be marked as readonly at nodepublish call if PVC accessmode has been set to ROX.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -387,6 +388,7 @@ func main() {
 		*extraCreateMetadata,
 		*defaultFSType,
 		nodeDeployment,
+		*publishROXVol,
 	)
 
 	var capacityController *capacity.Controller
