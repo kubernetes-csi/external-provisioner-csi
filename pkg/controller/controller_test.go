@@ -813,7 +813,7 @@ type provisioningTestcase struct {
 	getCredentialsErr  bool
 	volWithLessCap     bool
 	volWithZeroCap     bool
-	expectedPVSpec     *pvSpec
+	expectedPVSpec     pvSpec
 	clientSetObjects   []runtime.Object
 	createVolumeError  error
 	expectErr          bool
@@ -830,7 +830,7 @@ type provisioningTestcase struct {
 type provisioningFSTypeTestcase struct {
 	volOpts controller.ProvisionOptions
 
-	expectedPVSpec    *pvSpec
+	expectedPVSpec    pvSpec
 	clientSetObjects  []runtime.Object
 	createVolumeError error
 	expectErr         bool
@@ -906,7 +906,7 @@ func TestFSTypeProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -934,7 +934,7 @@ func TestFSTypeProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -965,7 +965,7 @@ func TestFSTypeProvision(t *testing.T) {
 				PVC:    createFakePVC(requestedBytes),
 			},
 			skipDefaultFSType: true,
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -995,7 +995,7 @@ func TestFSTypeProvision(t *testing.T) {
 				PVC:    createFakePVC(requestedBytes),
 			},
 			skipDefaultFSType: true,
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -1014,9 +1014,9 @@ func TestFSTypeProvision(t *testing.T) {
 		},
 	}
 
-	for k, tc := range testcases {
+	for k := range testcases {
 		t.Run(k, func(t *testing.T) {
-			runFSTypeProvisionTest(t, k, tc, requestedBytes, driverName, "" /* no migration */)
+			runFSTypeProvisionTest(t)
 		})
 	}
 }
@@ -1048,7 +1048,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -1077,7 +1077,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVC:    createFakePVC(requestedBytes),
 			},
 			withExtraMetadata: true,
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -1132,7 +1132,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -1177,7 +1177,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
@@ -1229,7 +1229,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
@@ -1281,7 +1281,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -1333,7 +1333,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany, v1.ReadWriteOnce},
@@ -1378,7 +1378,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVC:    createFakePVC(requestedBytes),
 			},
 			clientSetObjects: getDefaultSecretObjects(),
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1429,7 +1429,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					Namespace: "default-ns",
 				},
 			}},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1480,7 +1480,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					Namespace: "default-ns",
 				},
 			}},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1522,7 +1522,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVCWithVolumeMode(requestedBytes, volumeModeFileSystem),
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1549,7 +1549,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVCWithVolumeMode(requestedBytes, volumeModeBlock),
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1670,7 +1670,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -1779,7 +1779,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVC:    createFakePVC(requestedBytes),
 			},
 			volWithZeroCap: true,
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -1846,7 +1846,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					return claim
 				}(),
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -1927,7 +1927,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					return claim
 				}(),
 			},
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -2072,11 +2072,10 @@ func TestProvision(t *testing.T) {
 	}
 }
 
-func TestShouldProvision(t *testing.T) {
-	requestedBytes, testcases := provisionTestcases()
-	for k, tc := range testcases {
+for k := range testcases {
 		t.Run(k, func(t *testing.T) {
-			runProvisionTest(t, tc, requestedBytes, driverName, "" /* no migration */, false /* ShouldProvision() */)
+			runProvisionTest(t)
+
 		})
 	}
 }
@@ -2108,7 +2107,12 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 
 	return &snapshot
 }
-func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcase, requestedBytes int64, provisionDriverName, supportsMigrationFromInTreePluginName string) {
+
+func runFSTypeProvisionTest(t *testing.T) {
+	var k string
+	var tc provisioningTestcase
+	var provisionDriverName string
+	var supportsMigrationFromInTreePluginName string
 	t.Logf("Running test: %v", k)
 	myDefaultfsType := "ext4"
 	tmpdir := tempDir(t)
@@ -2124,7 +2128,7 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 
-	if tc.skipDefaultFSType {
+	if tc.skipCreateVolume {
 		myDefaultfsType = ""
 	}
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
@@ -2190,7 +2194,12 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 	}
 }
 
-func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int64, provisionDriverName, supportsMigrationFromInTreePluginName string, testProvision bool) {
+func runProvisionTest(t *testing.T) *provisioningTestcase {
+	var k string
+	var tc provisioningTestcase
+	var supportsMigrationFromInTreePluginName string
+	var provisionDriverName string
+	t.Logf("Running test: %v", k)
 	tmpdir := tempDir(t)
 	defer os.RemoveAll(tmpdir)
 	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
@@ -2206,34 +2215,10 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 			VolumeId:      "test-volume-id",
 		},
 	}
-	if tc.notNilSelector {
-		tc.volOpts.PVC.Spec.Selector = &metav1.LabelSelector{}
-	} else if tc.makeVolumeNameErr {
-		tc.volOpts.PVC.ObjectMeta.UID = ""
-	} else if tc.getSecretRefErr {
-		tc.volOpts.StorageClass.Parameters[provisionerSecretNameKey] = ""
-	} else if tc.getCredentialsErr {
-		tc.volOpts.StorageClass.Parameters[provisionerSecretNameKey] = "secretx"
-		tc.volOpts.StorageClass.Parameters[provisionerSecretNamespaceKey] = "default"
-	} else if !testProvision {
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(0)
-	} else if tc.volWithLessCap {
-		out.Volume.CapacityBytes = int64(80)
+
+	if !tc.expectErr {
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
-		controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, tc.createVolumeError).Times(1)
-	} else if tc.volWithZeroCap {
-		out.Volume.CapacityBytes = int64(0)
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
-	} else if tc.expectCreateVolDo != nil {
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(func(ctx context.Context, req *csi.CreateVolumeRequest) {
-			tc.expectCreateVolDo(t, ctx, req)
-		}).Return(out, tc.createVolumeError).Times(1)
-	} else {
-		// Setup regular mock call expectations.
-		if !tc.expectErr && !tc.skipCreateVolume {
-			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
-		}
-	}
+  }
 
 	getCapacityOut := &csi.GetCapacityResponse{
 		AvailableCapacity: 1024 * 1024 * 1024 * 1024,
@@ -2388,6 +2373,28 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 			}
 		}
 	}
+	return &provisioningTestcase{}
+}
+func (p *provisioningTestcase) notNilSelectorTest(notNilSelector bool) {
+	p.notNilSelector = notNilSelector
+}
+func (p *provisioningTestcase) makeVolumeNameErrTest(makeVolumeNameErr bool) {
+	p.makeVolumeNameErr = makeVolumeNameErr
+}
+func (p *provisioningTestcase) getSecretRefErrTest(getSecretRefErr string) {
+	p.getSecretRefErr = p.getCredentialsErr
+}
+func (p *provisioningTestcase) getCredentialsErrTest(getCredentialsErr bool) {
+	p.getCredentialsErr = getCredentialsErr
+}
+func (p *provisioningTestcase) volWithLessCapTest(volWithLessCap bool) {
+	p.volWithLessCap = volWithLessCap
+}
+func (p *provisioningTestcase) volWithZeroCapTest(volWithZeroCap bool) {
+	p.volWithZeroCap = volWithZeroCap
+}
+func (p *provisioningTestcase) expectCreateVolDoTest(expectCreateVolDo interface{}) {
+	p.expectCreateVolDo = expectCreateVolDo
 }
 
 // newContent returns a new content with given attributes
@@ -2426,6 +2433,25 @@ func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToS
 	return &content
 }
 
+type testcase struct {
+	volOpts                           controller.ProvisionOptions
+	restoredVolSizeSmall              bool
+	wrongDataSource                   bool
+	snapshotStatusReady               bool
+	expectedPVSpec                    pvSpec
+	expectErr                         bool
+	expectCSICall                     bool
+	notPopulated                      bool
+	misBoundSnapshotContentUID        bool
+	misBoundSnapshotContentNamespace  bool
+	misBoundSnapshotContentName       bool
+	nilBoundVolumeSnapshotContentName bool
+	nilSnapshotStatus                 bool
+	nilReadyToUse                     bool
+	nilContentStatus                  bool
+	nilSnapshotHandle                 bool
+}
+
 // TestProvisionFromSnapshot tests create volume from snapshot
 func TestProvisionFromSnapshot(t *testing.T) {
 	var apiGrp = "snapshot.storage.k8s.io"
@@ -2447,24 +2473,6 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		CSIPVS        *v1.CSIPersistentVolumeSource
 	}
 
-	type testcase struct {
-		volOpts                           controller.ProvisionOptions
-		restoredVolSizeSmall              bool
-		wrongDataSource                   bool
-		snapshotStatusReady               bool
-		expectedPVSpec                    *pvSpec
-		expectErr                         bool
-		expectCSICall                     bool
-		notPopulated                      bool
-		misBoundSnapshotContentUID        bool
-		misBoundSnapshotContentNamespace  bool
-		misBoundSnapshotContentName       bool
-		nilBoundVolumeSnapshotContentName bool
-		nilSnapshotStatus                 bool
-		nilReadyToUse                     bool
-		nilContentStatus                  bool
-		nilSnapshotHandle                 bool
-	}
 	testcases := map[string]testcase{
 		"provision with volume snapshot data source": {
 			volOpts: controller.ProvisionOptions{
@@ -2496,7 +2504,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				},
 			},
 			snapshotStatusReady: true,
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -3010,35 +3018,13 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
 			snap := newSnapshot(snapName, snapClassName, "snapcontent-snapuid", "snapuid", "claim", tc.snapshotStatusReady, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
-			if tc.nilSnapshotStatus {
-				snap.Status = nil
-			}
-			if tc.nilBoundVolumeSnapshotContentName {
-				snap.Status.BoundVolumeSnapshotContentName = nil
-			}
-			if tc.nilReadyToUse {
-				snap.Status.ReadyToUse = nil
-			}
+
 			return true, snap, nil
 		})
 
 		client.AddReactor("get", "volumesnapshotcontents", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
 			content := newContent("snapcontent-snapuid", snapClassName, "sid", "pv-uid", "volume", "snapuid", snapName, &requestedBytes, &timeNow)
-			if tc.misBoundSnapshotContentUID {
-				content.Spec.VolumeSnapshotRef.UID = "another-snapshot-uid"
-			}
-			if tc.misBoundSnapshotContentName {
-				content.Spec.VolumeSnapshotRef.Name = "another-snapshot-name"
-			}
-			if tc.misBoundSnapshotContentNamespace {
-				content.Spec.VolumeSnapshotRef.Namespace = "another-snapshot-namespace"
-			}
-			if tc.nilContentStatus {
-				content.Status = nil
-			}
-			if tc.nilSnapshotHandle {
-				content.Status.SnapshotHandle = nil
-			}
+
 			return true, content, nil
 		})
 
@@ -3112,6 +3098,35 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			doit(t, tc)
 		})
 	}
+}
+
+func (s *testcase) notNilSnapshotStatusTest(notNilSnapshotStatusTest bool) {
+	s.nilSnapshotStatus = notNilSnapshotStatusTest
+}
+
+func (s *testcase) nilBoundVolumeSnapshotContentNameTest(nilBoundVolumeSnapshotContentName bool) {
+	s.nilBoundVolumeSnapshotContentName = nilBoundVolumeSnapshotContentName
+}
+
+func (s *testcase) nilReadyToUseTest(nilReadyToUse bool) {
+	s.nilReadyToUse = nilReadyToUse
+}
+func (s *testcase) misBoundSnapshotContentUIDTest(misBoundSnapshotContentUID bool) {
+	s.misBoundSnapshotContentUID = misBoundSnapshotContentUID
+}
+func (s *testcase) misBoundSnapshotContentNameTest(misBoundSnapshotContentName bool) {
+	s.misBoundSnapshotContentName = misBoundSnapshotContentName
+}
+
+func (s *testcase) misBoundSnapshotContentNamespaceTest(misBoundSnapshotContentNamespace bool) {
+	s.misBoundSnapshotContentNamespace = misBoundSnapshotContentNamespace
+}
+func (s *testcase) nilContentStatusTest(nilContentStatus bool) {
+	s.nilContentStatus = nilContentStatus
+}
+
+func (s *testcase) nilSnapshotHandleTest(nilSnapshotHandle bool) {
+	s.nilSnapshotHandle = nilSnapshotHandle
 }
 
 // TestProvisionWithTopology is a basic test of provisioner integration with topology functions.
@@ -3932,7 +3947,7 @@ func TestProvisionFromPVC(t *testing.T) {
 		clonePVName          string                   // name of the PV that srcName PVC has a claim on
 		restoredVolSizeSmall bool                     // set to request a larger volSize than source PVC, default false
 		restoredVolSizeBig   bool                     // set to request a smaller volSize than source PVC, default false
-		expectedPVSpec       *pvSpec                  // set to expected PVSpec on success, for deep comparison, default nil
+		expectedPVSpec       pvSpec                  // set to expected PVSpec on success, for deep comparison, default nil
 		cloneUnsupported     bool                     // set to state clone feature not supported in capabilities, default false
 		expectFinalizers     bool                     // while set, expects clone protection finalizers to be set on a PVC
 		sourcePVStatusPhase  v1.PersistentVolumePhase // set to change source PV Status.Phase, default "Bound"
@@ -3942,7 +3957,7 @@ func TestProvisionFromPVC(t *testing.T) {
 			clonePVName:      pvName,
 			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			expectFinalizers: true,
-			expectedPVSpec: &pvSpec{
+			expectedPVSpec: pvSpec{
 				Name:          pvName,
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
