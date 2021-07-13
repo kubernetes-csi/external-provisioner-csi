@@ -1207,6 +1207,60 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			},
 			expectState: controller.ProvisioningFinished,
 		},
+		"provision with access mode multi node multi readonly with sidecar arg false": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
+					},
+				},
+			},
+			publishROXVol: false,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					ReadOnly:     false,
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				if len(req.GetVolumeCapabilities()) != 1 {
+					t.Errorf("Incorrect length in volume capabilities")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+					t.Errorf("Expected access mode to be set")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
+					t.Errorf("Expected multi_node_reader_only")
+				}
+			},
+			expectState: controller.ProvisioningFinished,
+		},
 		"provision with access mode multi node multi readonly with sidecar arg true": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
