@@ -825,6 +825,7 @@ type provisioningTestcase struct {
 	immediateBinding   bool   // enable immediate binding support for distributed provisioning
 	expectSelectedNode string // a specific selected-node of the PVC in the apiserver after the test, same as before if empty
 	expectNoProvision  bool   // if true, then ShouldProvision should return false
+	publishROXVol      bool
 }
 
 type provisioningFSTypeTestcase struct {
@@ -1206,7 +1207,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			},
 			expectState: controller.ProvisioningFinished,
 		},
-		"provision with access mode multi node multi readonly": {
+		"provision with access mode multi node multi readonly with sidecar arg true": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
@@ -1229,6 +1230,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
+			publishROXVol: true,
 			expectedPVSpec: &pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -2129,7 +2131,7 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 		myDefaultfsType = ""
 	}
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), nil, nil, nil, nil, nil, false, myDefaultfsType, nil, true)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), nil, nil, nil, nil, nil, false, myDefaultfsType, nil, false)
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: requestedBytes,
@@ -2301,8 +2303,9 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 	}
 
 	pluginCaps, controllerCaps := provisionCapabilities()
+	myPublishROXVol := tc.publishROXVol
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, true)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, myPublishROXVol)
 
 	// Adding objects to the informer ensures that they are consistent with
 	// the fake storage without having to start the informers.
